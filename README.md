@@ -210,13 +210,11 @@ This project is licensed under the **GPL v2 License** - see the [LICENSE](LICENS
 
 - **[Polylang](https://polylang.pro/)** - For the excellent multilingual framework
 - **[WordPress](https://wordpress.org/)** - For the amazing platform
-- **Community** - For feedback and feature requests
 
 ## 📞 **Support**
 
 - **Issues**: [GitHub Issues](https://github.com/Terrachad/polylang-disconnector/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Terrachad/polylang-disconnector/discussions)
-- **Email**: Create an issue for fastest response
 
 ---
 
