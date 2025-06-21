@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Manual Page Disconnector - Enhanced
  * Description: Visually disconnect pages between languages with detailed connection view
- * Version: 1.0.1
+ * Version: 1.1.0
  * Author: Terrachad
  */
 
