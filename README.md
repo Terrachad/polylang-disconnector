@@ -5,24 +5,30 @@
 [![PHP Version](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net/)
 [![License](https://img.shields.io/badge/License-GPL%20v2-red.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
 
-> **Visually disconnect pages between languages with detailed connection management for Polylang**
+> **Visually disconnect pages between languages with advanced orphaned connection cleanup for Polylang**
 
-A comprehensive WordPress plugin that provides an intuitive interface to view and manage existing page translations in Polylang. Perfect companion to the [Manual Page Connector](https://github.com/Terrachad/polylang-connector).
+A comprehensive WordPress plugin that provides an intuitive interface to view, manage, and clean up page translations in Polylang. Perfect companion to the [Manual Page Connector](https://github.com/Terrachad/polylang-connector).
 
 ## 🔗 **Companion Plugin**
 
 This plugin works alongside the **[Manual Page Connector](https://github.com/Terrachad/polylang-connector)** to provide complete translation management:
 
 - **🔗 Connector**: Connect pages between languages with AI suggestions
-- **🔓 Disconnector**: View and disconnect existing page translations
+- **🔓 Disconnector**: View, disconnect, and clean up existing page translations
 
-## ✨ **Features**
+## ✨ **Key Features**
 
 ### 🎯 **Core Functionality**
 - **Visual Connection Overview**: See all connected page pairs in a clean, organized interface
 - **Individual Disconnection**: Remove specific translation links with a single click
 - **Bulk Disconnection**: Select multiple connections and disconnect them all at once
-- **Real-time Filtering**: Filter by brand, category, or search by page title
+- **Advanced Orphaned Cleanup**: Detect and clean broken translation references
+
+### 🧹 **Orphaned Connection Management**
+- **Automatic Detection**: Identifies translations pointing to deleted pages
+- **Smart Cleanup**: Removes broken references from existing pages
+- **Force Cleanup**: Backup method for stubborn orphaned connections
+- **Detailed Reporting**: Shows exactly what was cleaned and why
 
 ### 🔍 **Smart Interface**
 - **Side-by-side Display**: Clear visualization of English ⟷ Italian page pairs
@@ -32,15 +38,35 @@ This plugin works alongside the **[Manual Page Connector](https://github.com/Ter
 
 ### 🛡️ **Safety & Reliability**
 - **Confirmation Dialogs**: Always asks before disconnecting pages
-- **Detailed Feedback**: Shows exactly which pages were disconnected
-- **Debug Mode**: Comprehensive debugging for troubleshooting
-- **Selective Display**: Only shows actually connected pages
+- **Detailed Feedback**: Shows exactly which pages were processed
+- **Comprehensive Debug Mode**: Full logging for troubleshooting
+- **Non-destructive**: Only removes translation links, never deletes pages
 
 ### 📊 **Organization Features**
 - **Brand Recognition**: Automatically detects appliance brands (Miele, Bosch, Samsung, etc.)
 - **Category Classification**: Groups pages by appliance type (Washing Machines, Dryers, etc.)
 - **Connection Status**: Clear indicators of which pages are connected
-- **Select All Visible**: Bulk select filtered results for mass operations
+- **Bulk Operations**: Select all visible results for mass operations
+
+## 🆘 **Orphaned Connection Problem**
+
+### **What Are Orphaned Connections?**
+When you delete pages from WordPress, Polylang translation data can remain, creating "orphaned" connections:
+
+```
+English Page (ID: 12941) → Italian Page (ID: 12963) [DELETED]
+```
+
+### **Why This Causes Issues:**
+- **Connector Plugin**: Shows pages as "connected" (reads translation data)
+- **Disconnector Plugin**: Can't show them (filters out deleted pages)  
+- **Data Inconsistency**: Plugins show different connection counts
+
+### **Our Solution:**
+- **🔍 Automatic Detection**: Finds orphaned connections automatically
+- **🧹 Smart Cleanup**: Removes broken translation references
+- **⚡ Force Cleanup**: Backup method for completely deleted pages
+- **📊 Clear Reporting**: Shows what was cleaned and why
 
 ## 📋 **Requirements**
 
@@ -73,9 +99,29 @@ Then activate in WordPress admin.
 
 1. **Navigate** to `Tools → Manual Page Disconnector` in WordPress admin
 2. **View** all existing page connections in the interface
-3. **Use filters** to find specific connections you want to manage
+3. **Check for orphaned connections** (shown in yellow warning box)
 
-### Disconnecting Pages
+### Managing Orphaned Connections
+
+#### When You See This Warning:
+```
+⚠️ Orphaned Translation Connections Detected
+Found X translation connections pointing to deleted pages. These should be cleaned up.
+```
+
+#### Cleanup Options:
+
+**🧹 Regular Cleanup (Recommended)**
+- **Best for**: Most orphaned connection issues
+- **How it works**: Scans all pages and removes broken translation references
+- **Use when**: You see the orphaned connections warning
+
+**⚡ Force Cleanup (Backup)**
+- **Best for**: Stubborn cases where regular cleanup doesn't work
+- **How it works**: Directly targets known problematic page IDs
+- **Use when**: Regular cleanup shows "0 cleaned" despite detecting orphans
+
+### Disconnecting Active Connections
 
 #### Individual Disconnection
 - Click the red **"Disconnect"** button next to any connection
@@ -96,24 +142,44 @@ Then activate in WordPress admin.
 └── Text Search (search page titles)
 ```
 
-### Interface Overview
+## 🔧 **Technical Details**
 
+### Core Functions
+
+```php
+// Get all existing connections with details
+get_disconnector_all_connections($pages)
+
+// Disconnect specific page pair
+disconnector_disconnect_single_page_pair($en_id, $it_id)
+
+// Detect orphaned connections
+get_orphaned_connections($pages, &$debug_info)
+
+// Clean up orphaned references (direct approach)
+cleanup_orphaned_translation($page_id, $lang, &$debug_info)
 ```
-📊 Statistics Bar
-├── Total connections count
-└── Currently filtered/visible count
 
-🔧 Bulk Actions
-├── Select All Visible checkbox
-├── Disconnect Selected button
-└── Selection counter
+### Orphaned Connection Detection
 
-📝 Connection List
-├── 🇺🇸 English Page ⟷ 🇮🇹 Italian Page
-├── Brand and category tags
-├── Direct edit links
-└── Individual disconnect buttons
+```php
+// Scan existing pages for broken translation references
+foreach ($pages as $page) {
+    $translations = pll_get_post_translations($page_id);
+    foreach ($translations as $lang => $translation_id) {
+        $translated_page = get_post($translation_id);
+        if (!$translated_page) {
+            // Found orphaned reference - remove it
+        }
+    }
+}
 ```
+
+### Database Operations
+- **Read-only scanning** of existing Polylang translation data
+- **Safe disconnection** by updating translation arrays
+- **Orphaned cleanup** removes broken references only
+- **No direct database queries** - uses Polylang API exclusively
 
 ## 🏷️ **Supported Brands & Categories**
 
@@ -130,56 +196,76 @@ Then activate in WordPress admin.
 - 🔥 Ovens, Cooktops & Hoods
 - 🌡️ Air Conditioners & Water Heaters
 
-## 🔧 **Technical Details**
-
-### Key Functions
-
-```php
-// Get all existing connections
-get_disconnector_all_connections($pages)
-
-// Disconnect specific page pair  
-disconnector_disconnect_single_page_pair($en_id, $it_id)
-
-// Brand and category detection
-disconnector_extract_brand($title)
-disconnector_categorize_page($title)
-```
-
-### Database Operations
-- **Read-only scanning** of existing Polylang translation data
-- **Safe disconnection** by updating translation arrays
-- **No direct database queries** - uses Polylang API only
-
 ## 🆚 **Connector vs Disconnector**
 
 | Feature | Connector | Disconnector |
 |---------|-----------|-------------|
 | **Purpose** | Create new connections | Remove existing connections |
 | **Interface** | Side-by-side selection | Connected pairs list |
-| **AI Features** | Smart suggestions | Visual organization |
+| **AI Features** | Smart suggestions | Orphaned detection |
 | **Bulk Actions** | Connect multiple | Disconnect multiple |
 | **Filtering** | Filter available pages | Filter connected pairs |
+| **Cleanup** | - | Advanced orphaned cleanup |
 
 ## 🐛 **Troubleshooting**
 
-### Common Issues
+### Common Issues & Solutions
+
+**Problem**: Orphaned connections detected but cleanup shows "0 cleaned"
+- **Cause**: Pages were completely deleted (not trashed)
+- **Solution**: Use **⚡ Force Cleanup** button instead
+
+**Problem**: Connector and Disconnector show different connection counts
+- **Cause**: Orphaned translation data from deleted pages
+- **Solution**: Run **🧹 Clean Up Orphaned Connections**
+
+**Problem**: Function conflicts with connector plugin
+- **Cause**: Both plugins loaded simultaneously
+- **Solution**: All functions are prefixed - should work together
 
 **Problem**: No connections shown
-- **Solution**: Ensure pages are actually connected via Polylang first
-
-**Problem**: Function conflicts with connector
-- **Solution**: Both plugins use prefixed functions - should work together
-
-**Problem**: Disconnection not working
-- **Solution**: Enable debug mode and check WordPress error logs
+- **Cause**: No pages are actually connected via Polylang
+- **Solution**: Use Manual Page Connector to create connections first
 
 ### Debug Mode
 
-Add `?debug=1` to the admin URL or check debug information in the interface:
+Enable detailed logging by adding `?debug=1` to the admin URL:
 
 ```
 Tools → Manual Page Disconnector?debug=1
+```
+
+### Understanding Orphaned vs Trashed Pages
+
+```php
+// Trashed pages (still exist in database)
+get_post(12345) // Returns post object with post_status = 'trash'
+
+// Completely deleted pages (removed from database)  
+get_post(12345) // Returns NULL - page doesn't exist
+```
+
+**Our plugin handles both cases** - the force cleanup is especially effective for completely deleted pages.
+
+## 🔄 **Cleanup Process Explained**
+
+### What Happens During Cleanup:
+
+1. **Scan Phase**: Check all existing pages for translation data
+2. **Detection Phase**: Identify translations pointing to non-existent pages
+3. **Cleanup Phase**: Remove broken translation references
+4. **Save Phase**: Update translation data with only valid references
+
+### Before Cleanup:
+```json
+Page 12941 translations: {"en": 12941, "it": 12963}
+Page 12963: NULL (deleted)
+```
+
+### After Cleanup:
+```json
+Page 12941 translations: {"en": 12941}
+Page 12963: Still deleted, but no broken references remain
 ```
 
 ## 🤝 **Contributing**
@@ -202,9 +288,33 @@ cp -r polylang-disconnector /path/to/wordpress/wp-content/plugins/page_disconnec
 # Activate and test
 ```
 
+### Testing Checklist
+
+- [ ] Regular disconnection works
+- [ ] Bulk disconnection works  
+- [ ] Orphaned detection works
+- [ ] Regular cleanup works
+- [ ] Force cleanup works
+- [ ] Filtering works
+- [ ] Debug mode provides useful info
+
 ## 📄 **License**
 
 This project is licensed under the **GPL v2 License** - see the [LICENSE](LICENSE) file for details.
+
+## 🎯 **Roadmap**
+
+### Planned Features
+- **Multi-language support** (beyond EN/IT)
+- **Scheduled cleanup** for orphaned connections
+- **Export/Import** connection data
+- **Integration** with other translation plugins
+- **Advanced reporting** dashboard
+
+### Recent Updates
+- ✅ **v1.1.0**: Added advanced orphaned connection cleanup
+- ✅ **v1.0.1**: Fixed function name conflicts with connector
+- ✅ **v1.0.0**: Initial release with basic disconnect functionality
 
 ## 🙏 **Acknowledgments**
 
@@ -215,6 +325,22 @@ This project is licensed under the **GPL v2 License** - see the [LICENSE](LICENS
 
 - **Issues**: [GitHub Issues](https://github.com/Terrachad/polylang-disconnector/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Terrachad/polylang-disconnector/discussions)
+- **Documentation**: This README
+
+## 💡 **Pro Tips**
+
+### Best Practices
+1. **Run orphaned cleanup** regularly if you frequently delete pages
+2. **Use force cleanup** when pages are completely deleted (not trashed)
+3. **Enable debug mode** when troubleshooting issues
+4. **Filter connections** to find specific pages quickly
+5. **Use bulk operations** for efficiency with large datasets
+
+### Performance Tips
+- Plugin is optimized for **1000+ pages**
+- **Filtering reduces** display load
+- **Bulk operations** are more efficient than individual actions
+- **Debug mode** adds logging overhead - disable in production
 
 ---
 
