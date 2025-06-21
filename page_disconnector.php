@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Manual Page Disconnector - Enhanced
  * Description: Visually disconnect pages between languages with detailed connection view
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Terrachad
  */
 
@@ -50,7 +50,7 @@ function manual_page_disconnector_page() {
         $debug_info[] = "Disconnection request: EN=$en_id, IT=$it_id";
         
         if ($en_id > 0 && $it_id > 0) {
-            $result = disconnect_single_page_pair($en_id, $it_id);
+            $result = disconnector_disconnect_single_page_pair($en_id, $it_id);
             $debug_info[] = "Disconnection result: " . ($result['success'] ? 'SUCCESS' : 'FAILED') . " - " . $result['message'];
             $message = $result['message'];
         } else {
@@ -73,7 +73,7 @@ function manual_page_disconnector_page() {
                 $it_id = intval($it_id);
                 
                 if ($en_id > 0 && $it_id > 0) {
-                    $result = disconnect_single_page_pair($en_id, $it_id);
+                    $result = disconnector_disconnect_single_page_pair($en_id, $it_id);
                     if ($result['success']) {
                         $success++;
                     }
@@ -87,6 +87,109 @@ function manual_page_disconnector_page() {
         }
     }
     
+    // Process orphaned connection cleanup - using direct approach like force cleanup
+    if (isset($_POST['cleanup_orphaned'])) {
+        $debug_info[] = "Orphaned cleanup requested - using direct page scanning approach";
+        $debug_info[] = "Total pages to scan: " . count($pages);
+        
+        $cleaned = 0;
+        $processed = 0;
+        $pages_with_orphans = 0;
+        
+        // Scan each existing page and clean up its orphaned translations directly
+        foreach ($pages as $page) {
+            $page_id = $page->ID;
+            $translations = pll_get_post_translations($page_id);
+            
+            if (is_array($translations) && count($translations) > 1) {
+                $processed++;
+                $debug_info[] = "Processing page $page_id: {$page->post_title}";
+                $debug_info[] = "Current translations for page $page_id: " . json_encode($translations);
+                
+                $clean_translations = [];
+                $had_orphans = false;
+                
+                // Check each translation and keep only existing pages
+                foreach ($translations as $lang => $translation_id) {
+                    $translated_page = get_post($translation_id);
+                    if ($translated_page) {
+                        $clean_translations[$lang] = $translation_id;
+                        $debug_info[] = "Keeping valid translation: $lang -> $translation_id";
+                    } else {
+                        $had_orphans = true;
+                        $debug_info[] = "Removing orphaned translation: $lang -> $translation_id (page doesn't exist)";
+                    }
+                }
+                
+                // If we found orphaned references, save the clean translations
+                if ($had_orphans) {
+                    $pages_with_orphans++;
+                    $debug_info[] = "Saving cleaned translations for page $page_id: " . json_encode($clean_translations);
+                    
+                    $save_result = pll_save_post_translations($clean_translations);
+                    $debug_info[] = "Save result for page $page_id: " . ($save_result !== false ? 'SUCCESS' : 'FAILED');
+                    
+                    if ($save_result !== false) {
+                        $cleaned++;
+                    }
+                } else {
+                    $debug_info[] = "No orphaned translations found for page $page_id";
+                }
+            } else {
+                $debug_info[] = "Skipping page $page_id - no multiple translations";
+            }
+        }
+        
+        $message = "Scanned $processed pages with translations, found $pages_with_orphans pages with orphaned data, successfully cleaned $cleaned pages.";
+        $debug_info[] = "Direct cleanup result: $message";
+    }
+    
+    // Process force cleanup for known orphaned connections
+    if (isset($_POST['force_cleanup_orphaned'])) {
+        $debug_info[] = "Force cleanup requested - targeting known orphaned page IDs";
+        
+        // List of orphaned page IDs from the display (these are the English pages with broken Italian links)
+        $known_orphaned_pages = [
+            12941, 12942, 12943, 12944, 12945, 12946, 12947, 12948, 12949, 12950,
+            12951, 12952, 12953, 12954, 12955, 12956, 12957, 12958, 12959, 12960,
+            12961, 12962
+        ];
+        
+        $cleaned = 0;
+        $processed = 0;
+        
+        foreach ($known_orphaned_pages as $page_id) {
+            $page = get_post($page_id);
+            if ($page) {
+                $processed++;
+                $debug_info[] = "Force processing page ID: $page_id ({$page->post_title})";
+                
+                $translations = pll_get_post_translations($page_id);
+                $debug_info[] = "Current translations for page $page_id: " . json_encode($translations);
+                
+                if (is_array($translations) && count($translations) > 1) {
+                    // Create new translations array with only the existing page
+                    $clean_translations = ['en' => $page_id];  // Assuming these are English pages
+                    
+                    $debug_info[] = "Setting clean translations for page $page_id: " . json_encode($clean_translations);
+                    $save_result = pll_save_post_translations($clean_translations);
+                    $debug_info[] = "Save result for page $page_id: " . ($save_result !== false ? 'SUCCESS' : 'FAILED');
+                    
+                    if ($save_result !== false) {
+                        $cleaned++;
+                    }
+                } else {
+                    $debug_info[] = "Page $page_id has no multiple translations to clean";
+                }
+            } else {
+                $debug_info[] = "Page ID $page_id not found";
+            }
+        }
+        
+        $message = "Force cleanup: Processed $processed pages, cleaned up $cleaned translation references.";
+        $debug_info[] = "Force cleanup result: $message";
+    }
+    
     // Check if Polylang is active
     if (!function_exists('pll_get_post_translations') || !function_exists('pll_set_post_language')) {
         echo '<div class="notice notice-error"><p>Polylang is not active. Please activate Polylang first.</p></div>';
@@ -97,7 +200,15 @@ function manual_page_disconnector_page() {
     $pages = get_pages(['post_status' => 'publish', 'sort_column' => 'post_title', 'number' => 1000]);
     
     // Get all existing connections
-    $connections = get_all_connections($pages);
+    $connections = get_disconnector_all_connections($pages);
+    
+    // Get orphaned connections (where one page was deleted)
+    $initial_debug = [];
+    $orphaned_connections = get_orphaned_connections($pages, $initial_debug);
+    
+    if ($debug_mode) {
+        $debug_info = array_merge($debug_info, $initial_debug);
+    }
     
     ?>
     <div class="wrap">
@@ -122,8 +233,43 @@ function manual_page_disconnector_page() {
         <?php endif; ?>
         
         <div class="notice notice-info">
-            <p><strong>Statistics:</strong> <?php echo count($connections); ?> page connections found</p>
+            <p><strong>Statistics:</strong> <?php echo count($connections); ?> page connections found<?php if (!empty($orphaned_connections)): ?>, <strong style="color: #d63638;"><?php echo count($orphaned_connections); ?> orphaned connections detected</strong><?php endif; ?></p>
         </div>
+        
+        <?php if (!empty($orphaned_connections)): ?>
+            <div class="notice notice-warning">
+                <h4>⚠️ Orphaned Translation Connections Detected</h4>
+                <p>Found <?php echo count($orphaned_connections); ?> translation connections pointing to deleted pages. These should be cleaned up.</p>
+                <form method="post" style="display: inline;">
+                    <?php wp_nonce_field('manual_page_disconnector_action', 'manual_page_disconnector_nonce'); ?>
+                    <input type="hidden" name="cleanup_orphaned" value="1">
+                    <input type="hidden" name="debug_mode" value="1">
+                    <button type="submit" class="button button-secondary" onclick="return confirm('Clean up all orphaned translation connections?');">
+                        🧹 Clean Up Orphaned Connections
+                    </button>
+                </form>
+                <form method="post" style="display: inline; margin-left: 10px;">
+                    <?php wp_nonce_field('manual_page_disconnector_action', 'manual_page_disconnector_nonce'); ?>
+                    <input type="hidden" name="force_cleanup_orphaned" value="1">
+                    <input type="hidden" name="debug_mode" value="1">
+                    <button type="submit" class="button button-primary" onclick="return confirm('Force cleanup using direct page IDs? This will process the 22 orphaned connections shown above.');">
+                        ⚡ Force Cleanup (Direct)
+                    </button>
+                </form>
+                
+                <details style="margin-top: 10px;">
+                    <summary>Show Orphaned Connections Details</summary>
+                    <ul style="margin-top: 10px;">
+                        <?php foreach ($orphaned_connections as $orphaned): ?>
+                            <li>
+                                <strong><?php echo esc_html($orphaned['existing_title']); ?></strong> (ID: <?php echo $orphaned['existing_page_id']; ?>, <?php echo $orphaned['lang']; ?>) 
+                                → points to deleted page ID: <?php echo $orphaned['missing_page_id']; ?>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </details>
+            </div>
+        <?php endif; ?>
         
         <style>
         .disconnector-container {
@@ -572,8 +718,8 @@ function manual_page_disconnector_page() {
     <?php
 }
 
-// Get all page connections with detailed information
-function get_all_connections($pages) {
+// Get all page connections with detailed information for disconnector
+function get_disconnector_all_connections($pages) {
     $connections = [];
     $processed_pairs = [];
     
@@ -622,7 +768,7 @@ function get_all_connections($pages) {
 }
 
 // Disconnect a single pair of pages
-function disconnect_single_page_pair($en_page_id, $it_page_id) {
+function disconnector_disconnect_single_page_pair($en_page_id, $it_page_id) {
     // Verify pages exist
     $en_page = get_post($en_page_id);
     $it_page = get_post($it_page_id);
@@ -711,5 +857,85 @@ function disconnector_extract_brand($title) {
     }
     
     return null;
+}
+
+// Get orphaned connections (where one page in the translation pair was deleted)
+function get_orphaned_connections($pages, &$debug_info = []) {
+    $orphaned = [];
+    $debug_info[] = "Scanning " . count($pages) . " pages for orphaned connections";
+    
+    foreach ($pages as $page) {
+        $translations = pll_get_post_translations($page->ID);
+        
+        if (is_array($translations) && count($translations) > 1) {
+            $debug_info[] = "Page {$page->ID} has " . count($translations) . " translations: " . json_encode($translations);
+            
+            foreach ($translations as $lang => $translation_id) {
+                if ($translation_id != $page->ID) {
+                    $translated_page = get_post($translation_id);
+                    
+                    // If the translated page doesn't exist, it's orphaned
+                    if (!$translated_page) {
+                        $debug_info[] = "ORPHANED FOUND: Page {$page->ID} ({$page->post_title}) points to deleted page $translation_id";
+                        $orphaned[] = [
+                            'existing_page_id' => $page->ID,
+                            'existing_title' => $page->post_title,
+                            'missing_page_id' => $translation_id,
+                            'lang' => pll_get_post_language($page->ID, 'slug')
+                        ];
+                    } else {
+                        $debug_info[] = "Valid translation: Page {$page->ID} -> Page $translation_id ({$translated_page->post_title})";
+                    }
+                }
+            }
+        } else {
+            $debug_info[] = "Page {$page->ID} has no translations or only 1 translation";
+        }
+    }
+    
+    $debug_info[] = "Total orphaned connections found: " . count($orphaned);
+    return $orphaned;
+}
+
+// Clean up orphaned translation data for a specific page
+function cleanup_orphaned_translation($page_id, $lang, &$debug_info = []) {
+    $debug_info[] = "Getting translations for page ID: $page_id";
+    $translations = pll_get_post_translations($page_id);
+    
+    if (!is_array($translations)) {
+        $debug_info[] = "No translations found for page ID: $page_id";
+        return false;
+    }
+    
+    $debug_info[] = "Original translations: " . json_encode($translations);
+    
+    // Remove any translations that point to non-existent pages
+    $clean_translations = [];
+    $removed_count = 0;
+    
+    foreach ($translations as $translation_lang => $translation_id) {
+        $translated_page = get_post($translation_id);
+        if ($translated_page) {
+            $clean_translations[$translation_lang] = $translation_id;
+            $debug_info[] = "Keeping translation: $translation_lang -> $translation_id (page exists)";
+        } else {
+            $removed_count++;
+            $debug_info[] = "Removing orphaned translation: $translation_lang -> $translation_id (page doesn't exist)";
+        }
+    }
+    
+    $debug_info[] = "Clean translations: " . json_encode($clean_translations);
+    $debug_info[] = "Removed $removed_count orphaned references";
+    
+    // If we removed any orphaned references, save the cleaned translations
+    if ($removed_count > 0) {
+        $debug_info[] = "Saving cleaned translations for page ID: $page_id";
+        $save_result = pll_save_post_translations($clean_translations);
+        $debug_info[] = "Save result: " . ($save_result !== false ? 'SUCCESS' : 'FAILED');
+        return $save_result !== false;
+    } else {
+        $debug_info[] = "No cleanup needed for page ID: $page_id";
+        return false; // No cleanup was actually needed
+    }
 }
 ?>
